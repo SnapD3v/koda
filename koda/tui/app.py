@@ -23,15 +23,21 @@ class KodaApp(App):
         self.db.init()
 
     def on_mount(self) -> None:
-        """Показываем SearchScreen сразу после запуска."""
-        from koda.tui.screens.search import SearchScreen
+        from koda.tui.screens.home import HomeScreen
         self.kodik = KodikClient(self.config.get("token", ""))
-        self.push_screen(SearchScreen())
+        self.push_screen(HomeScreen())
 
     async def on_unmount(self) -> None:
-        """Закрываем httpx-сессию при выходе."""
         await self.kodik._http.aclose()
 
     def action_library(self) -> None:
         from koda.tui.screens.library import LibraryScreen
         self.push_screen(LibraryScreen())
+
+    def action_settings(self) -> None:
+        from koda.tui.screens.settings import SettingsScreen
+        self.push_screen(SettingsScreen())
+
+    def action_updates(self) -> None:
+        from koda.tui.screens.version import VersionScreen
+        self.push_screen(VersionScreen())

@@ -2,6 +2,123 @@ Screen {
     background: $background;
 }
 
+/* ── HomeScreen ─────────────────────────────────────────────────────────── */
+
+#home-container {
+    padding: 1 2;
+    height: 100%;
+    align: center top;
+}
+
+#home-banner {
+    text-align: center;
+    margin-bottom: 2;
+    padding: 1 2;
+}
+
+#home-buttons {
+    height: 3;
+    margin-bottom: 2;
+    align: center middle;
+}
+
+#home-buttons Button {
+    width: 20;
+    margin: 0 1;
+}
+
+#home-recent-label {
+    color: $text-muted;
+    height: 1;
+    margin-bottom: 1;
+}
+
+#home-recent {
+    height: 3;
+    align: left middle;
+}
+
+.recent-btn {
+    width: auto;
+    max-width: 30;
+    margin: 0 1;
+}
+
+/* ── SettingsScreen ─────────────────────────────────────────────────────── */
+
+#s-form {
+    height: 1fr;
+    padding: 1 2;
+}
+
+.s-label {
+    color: $text-muted;
+    height: 1;
+    margin-top: 1;
+}
+
+.hidden {
+    display: none;
+}
+
+#s-player-status {
+    height: 1;
+    margin-top: 1;
+    color: $text-muted;
+}
+
+#s-player-links {
+    height: 3;
+    margin-top: 1;
+}
+
+#s-player-links Button {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#s-btn-row {
+    height: 3;
+    padding: 0 2;
+    margin-bottom: 1;
+}
+
+#s-btn-row Button {
+    width: 1fr;
+    margin-right: 1;
+}
+
+/* ── VersionScreen ──────────────────────────────────────────────────────── */
+
+#ver-container {
+    padding: 1 2;
+    height: 100%;
+}
+
+#ver-local {
+    margin-bottom: 1;
+    padding: 1;
+    border: tall $border;
+}
+
+#ver-remote {
+    margin-bottom: 1;
+    padding: 1;
+    border: tall $border;
+    height: auto;
+    min-height: 3;
+}
+
+#ver-btns {
+    height: 3;
+    margin-top: 1;
+}
+
+#ver-btns Button {
+    width: 1fr;
+    margin-right: 1;
+}
+
 #search-container {
     padding: 1 2;
     height: 100%;
@@ -66,4 +183,181 @@ FolderPickScreen {
     height: auto;
     max-height: 10;
     margin-bottom: 1;
+}
+
+/* ── LibraryScreen ─────────────────────────────────────────────────────── */
+
+#lib-container {
+    padding: 1 2;
+    height: 100%;
+}
+
+#lib-status {
+    color: $text-muted;
+    margin-bottom: 1;
+    height: 1;
+}
+
+#lib-folders,
+#lib-items {
+    height: 1fr;
+    border: tall $border;
+}
+
+FolderItem {
+    height: 3;
+    padding: 0 1;
+}
+
+FolderContentItem {
+    height: 3;
+    padding: 0 1;
+}
+
+/* ── NewFolderModal ─────────────────────────────────────────────────────── */
+
+NewFolderModal {
+    align: center middle;
+}
+
+#nfm-container {
+    width: 50;
+    height: auto;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#nfm-title {
+    text-align: center;
+    margin-bottom: 1;
+}
+
+#nfm-input {
+    margin-bottom: 1;
+}
+
+/* ── DetailScreen ───────────────────────────────────────────────────────── */
+
+#detail-scroll {
+    height: 1fr;
+    border: tall $border;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#detail-info {
+    padding: 1;
+}
+
+#detail-controls {
+    height: auto;
+    padding: 0 2;
+}
+
+#detail-controls Label {
+    color: $text-muted;
+    height: 1;
+}
+
+#detail-buttons {
+    margin-top: 1;
+    height: 3;
+}
+
+#detail-status {
+    color: $text-muted;
+    height: 1;
+    margin-top: 1;
+}
+
+/* ── DownloadModal ──────────────────────────────────────────────────────── */
+
+DownloadModal {
+    align: center middle;
+}
+
+#dl-container {
+    width: 90%;
+    max-width: 80;
+    min-width: 36;
+    height: auto;
+    border: thick $warning;
+    background: $surface;
+    padding: 1 2;
+}
+
+#dl-title {
+    text-align: center;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.dl-label {
+    color: $text-muted;
+    height: 1;
+}
+
+#dl-episodes {
+    height: auto;
+    max-height: 14;
+    border: tall $border;
+    margin-bottom: 1;
+}
+
+#dl-sel-row {
+    height: 3;
+    margin-bottom: 1;
+}
+
+#dl-sel-row Button {
+    width: 1fr;
+}
+
+#dl-status {
+    height: auto;
+    min-height: 1;
+    margin-bottom: 1;
+    color: $text-muted;
+}
+
+#dl-btn-row {
+    height: 3;
+}
+
+#dl-btn-row Button {
+    width: 1fr;
+}
+
+/* ── LocalFilesScreen ───────────────────────────────────────────────────── */
+
+#lf-container {
+    padding: 1 2;
+    height: 100%;
+}
+
+#lf-title {
+    margin-bottom: 1;
+    height: 1;
+}
+
+#lf-list {
+    height: 1fr;
+    border: tall $border;
+}
+
+LocalFileItem {
+    height: 3;
+    padding: 0 1;
+}
+
+#lf-status {
+    color: $text-muted;
+    height: 1;
+    margin-top: 1;
+}
+
+#lf-empty {
+    color: $text-muted;
+    padding: 2 1;
 }

@@ -1,12 +1,20 @@
 import re
 import json
 import base64
+import logging
 import httpx
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 from urllib.parse import unquote
+
+_log = logging.getLogger("koda.api")
+_log.setLevel(logging.DEBUG)
+_log_handler = logging.FileHandler(Path.home() / "koda_debug.log", encoding="utf-8")
+_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+_log.addHandler(_log_handler)
 
 # ─────────────────────────────────────────────
 # Константы
@@ -67,17 +75,27 @@ class KodikClient:
         limit: int = 20,
     ) -> list[SearchResult]:
         """Поиск контента через Kodik API."""
+        if not self.token:
+            raise ValueError("Токен Kodik не задан. Укажи его в ~/.config/koda/config.toml или $env:KODIK_TOKEN")
+
         params: dict = {
             "token":              self.token,
             "title":              query,
             "with_material_data": "true",
+            "with_episodes":      "true",
             "limit":              limit,
         }
         if media_type:
             params["type"] = media_type
 
         response = await self._http.post(f"{API_BASE}/search", data=params)
-        response.raise_for_status()
+        if not response.is_success:
+            _log.error("search HTTP %s: %s", response.status_code, response.text[:300])
+            raise httpx.HTTPStatusError(
+                f"HTTP {response.status_code}: {response.text[:200]}",
+                request=response.request,
+                response=response,
+            )
 
         data = response.json()
         return [self._parse_result(r) for r in data.get("results", [])]
@@ -95,16 +113,15 @@ class KodikClient:
         if link.startswith("//"):
             link = "https:" + link
 
-        player_domain = link.split("/")[2]
-
-        # Шаг 2: получаем HTML плеера
-        html = await self._fetch_player_page(link)
+        # Шаг 2: получаем HTML плеера; используем финальный URL после редиректов
+        html, final_url = await self._fetch_player_page(link)
+        player_domain = final_url.split("/")[2]
 
         # Шаг 3: вытаскиваем urlParams из JS
         url_params = self._extract_url_params(html)
 
         # Шаг 4: POST /ftor → получаем закодированные ссылки
-        links = await self._fetch_links(player_domain, url_params, player_url=link)
+        links = await self._fetch_links(player_domain, url_params, player_url=final_url)
 
         # Шаг 5: декодируем и выбираем качество
         return self._pick_best_url(links, preferred_quality)
@@ -119,13 +136,14 @@ class KodikClient:
             "hash": parts[5],
         }
 
-    async def _fetch_player_page(self, url: str) -> str:
+    async def _fetch_player_page(self, url: str) -> tuple[str, str]:
+        """Returns (html, final_url) — final_url may differ from url after redirects."""
         response = await self._http.get(
             url,
             headers={"Referer": REFERER},
         )
         response.raise_for_status()
-        return response.text
+        return response.text, str(response.url)
 
     def _extract_url_params(self, html: str) -> dict:
         match = re.search(r"var urlParams\s*=\s*'(\{.+?\})'", html)
@@ -158,6 +176,8 @@ class KodikClient:
             "info":           "{}",
         })
 
+        _log.debug("POST /ftor url=https://%s/ftor params=%s", player_domain, clean_params)
+
         response = await self._http.post(
             f"https://{player_domain}/ftor",
             data=clean_params,
@@ -168,6 +188,7 @@ class KodikClient:
             },
         )
 
+        _log.debug("/ftor status=%s body=%s", response.status_code, response.text[:500])
         response.raise_for_status()
         return response.json().get("links", {})
 

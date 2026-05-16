@@ -49,11 +49,12 @@ class Database:
                 );
 
                 CREATE TABLE IF NOT EXISTS progress (
-                    kodik_id   TEXT    PRIMARY KEY,
-                    season     INTEGER NOT NULL DEFAULT 1,
-                    episode    INTEGER NOT NULL DEFAULT 1,
-                    timecode   REAL    NOT NULL DEFAULT 0.0,
-                    updated_at TEXT    NOT NULL
+                    kodik_id       TEXT    PRIMARY KEY,
+                    season         INTEGER NOT NULL DEFAULT 1,
+                    episode        INTEGER NOT NULL DEFAULT 1,
+                    timecode       REAL    NOT NULL DEFAULT 0.0,
+                    translation_id INTEGER NOT NULL DEFAULT 0,
+                    updated_at     TEXT    NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS search_history (
@@ -62,8 +63,27 @@ class Database:
                     searched_at TEXT    NOT NULL
                 );
             """)
+            try:
+                conn.execute(
+                    "ALTER TABLE progress ADD COLUMN translation_id INTEGER NOT NULL DEFAULT 0"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
+
+            for name in ("Любимое", "Смотреть дальше", "Скачано"):
+                conn.execute(
+                    "INSERT OR IGNORE INTO folders (name, created_at) VALUES (?, ?)",
+                    (name, _now()),
+                )
 
     # ── Папки ───────────────────────────────────────────────────────────────
+
+    def get_folder_by_name(self, name: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM folders WHERE name = ?", (name,)
+            ).fetchone()
+        return dict(row) if row else None
 
     def create_folder(self, name: str) -> int:
         """Создаёт папку и возвращает её id."""
@@ -151,14 +171,15 @@ class Database:
         season: int = 1,
         episode: int = 1,
         timecode: float = 0.0,
+        translation_id: int = 0,
     ) -> None:
         """Сохраняет или обновляет прогресс."""
         with self._connect() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO progress
-                    (kodik_id, season, episode, timecode, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (kodik_id, season, episode, timecode, _now()))
+                    (kodik_id, season, episode, timecode, translation_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (kodik_id, season, episode, timecode, translation_id, _now()))
 
     def get_progress(self, kodik_id: str) -> dict | None:
         with self._connect() as conn:
@@ -182,11 +203,7 @@ class Database:
     # ── История поиска ───────────────────────────────────────────────────────
 
     def add_to_history(self, query: str) -> None:
-        """
-        Добавляет запрос в историю.
-        Дублирование исключается: старая запись с тем же текстом удаляется,
-        новая вставляется наверх (самая свежая — первая).
-        """
+        """Добавляет запрос в историю."""
         with self._connect() as conn:
             conn.execute(
                 "DELETE FROM search_history WHERE query = ?", (query,)
@@ -212,3 +229,16 @@ class Database:
     def clear_history(self) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM search_history")
+
+    # ── Недавнее ────────────────────────────────────────────────────────────
+
+    def get_recent_items(self, limit: int = 4) -> list[dict]:
+        folder = self.get_folder_by_name("Смотреть дальше")
+        if not folder:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM folder_items WHERE folder_id = ? ORDER BY added_at DESC LIMIT ?",
+                (folder["id"], limit),
+            ).fetchall()
+        return [dict(r) for r in rows]

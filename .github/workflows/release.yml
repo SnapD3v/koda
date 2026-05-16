@@ -1,0 +1,39 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyinstaller textual>=0.80.0 httpx>=0.27.0 tomli-w>=1.1.0
+
+      - name: Build portable exe
+        run: pyinstaller koda.spec --clean --noconfirm
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/koda.exe
+          generate_release_notes: true
+          body: |
+            ## Установка
+            1. Скачай `koda.exe`
+            2. Запусти — Python **не нужен**
+            3. При первом запуске введи токен Kodik в **Настройках**
+
+            ## Зависимости (опционально)
+            - **mpv** — для стриминга: https://mpv.io/installation/  (~30 МБ)
+            - **ffmpeg** — для скачивания серий: https://ffmpeg.org/download.html  (~60 МБ)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

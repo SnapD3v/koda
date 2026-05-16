@@ -36,8 +36,8 @@ class SearchScreen(Screen):
     """Экран поиска — стартовый экран приложения."""
 
     BINDINGS = [
-        Binding("escape", "app.pop_screen", "Назад", show=False),
-        Binding("ctrl+l", "app.library",    "Библиотека"),
+        Binding("escape",  "app.pop_screen", "Назад"),
+        Binding("ctrl+l",  "app.library",    "Библиотека"),
     ]
 
     _search_timer = None
@@ -101,7 +101,7 @@ class SearchScreen(Screen):
     @work(exclusive=True)
     async def _do_search(self, query: str) -> None:
         try:
-            results = await self.app.kodik.search(query, limit=30)
+            results = await self.app.kodik.search(query, limit=100)
             self._update_results(query, results)
         except Exception as e:
             self.query_one("#search-status", Static).update(
