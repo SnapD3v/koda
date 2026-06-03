@@ -6,8 +6,20 @@ on:
       - "v*"
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: koda.exe
+          - os: macos-latest
+            artifact: koda-macos
+          - os: ubuntu-latest
+            artifact: koda-linux
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,24 +28,54 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install pyinstaller textual>=0.80.0 httpx>=0.27.0 tomli-w>=1.1.0
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller .
 
-      - name: Build portable exe
+      - name: Build
         run: pyinstaller koda.spec --clean --noconfirm
+
+      - name: Rename (non-Windows)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: mv dist/koda dist/${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Make binaries executable
+        run: chmod +x dist/koda-macos dist/koda-linux || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/koda.exe
+          files: dist/*
           generate_release_notes: true
           body: |
             ## Установка
-            1. Скачай `koda.exe`
-            2. Запусти — Python **не нужен**
-            3. При первом запуске введи токен Kodik в **Настройках**
+
+            | Платформа | Файл |
+            |-----------|------|
+            | Windows   | `koda.exe` |
+            | macOS     | `koda-macos` |
+            | Linux     | `koda-linux` |
+
+            macOS/Linux: `chmod +x koda-macos && ./koda-macos`
 
             ## Зависимости (опционально)
-            - **mpv** — для стриминга: https://mpv.io/installation/  (~30 МБ)
-            - **ffmpeg** — для скачивания серий: https://ffmpeg.org/download.html  (~60 МБ)
+            - **mpv** — для стриминга: https://mpv.io/installation/
+            - **ffmpeg** — для скачивания серий: https://ffmpeg.org/download.html
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

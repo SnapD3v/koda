@@ -5,16 +5,11 @@ import logging
 import httpx
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
 from urllib.parse import unquote
 
 _log = logging.getLogger("koda.api")
-_log.setLevel(logging.DEBUG)
-_log_handler = logging.FileHandler(Path.home() / "koda_debug.log", encoding="utf-8")
-_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-_log.addHandler(_log_handler)
 
 # ─────────────────────────────────────────────
 # Константы

@@ -75,10 +75,9 @@ class VersionScreen(Screen):
             html        = data.get("html_url", _GH_URL)
             self._latest_url = html
 
-            cur    = f"v{__version__}"
             status = (
                 "[green]✓ актуально[/green]"
-                if tag == cur
+                if tag.lstrip("v") == __version__
                 else f"[yellow]⚠ доступно обновление {tag}[/yellow]"
             )
 

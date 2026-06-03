@@ -68,7 +68,13 @@ class Database:
                     "ALTER TABLE progress ADD COLUMN translation_id INTEGER NOT NULL DEFAULT 0"
                 )
             except sqlite3.OperationalError:
-                pass  # column already exists
+                pass
+
+            try:
+                conn.execute("ALTER TABLE folders ADD COLUMN sort_order INTEGER")
+                conn.execute("UPDATE folders SET sort_order = id")
+            except sqlite3.OperationalError:
+                pass
 
             for name in ("Любимое", "Смотреть дальше", "Скачано"):
                 conn.execute(
@@ -110,14 +116,33 @@ class Database:
         """Возвращает все папки с количеством элементов в каждой."""
         with self._connect() as conn:
             rows = conn.execute("""
-                SELECT f.id, f.name, f.created_at,
+                SELECT f.id, f.name, f.created_at, f.sort_order,
                        COUNT(fi.id) AS item_count
                 FROM folders f
                 LEFT JOIN folder_items fi ON fi.folder_id = f.id
                 GROUP BY f.id
-                ORDER BY f.created_at
+                ORDER BY COALESCE(f.sort_order, f.id), f.id
             """).fetchall()
         return [dict(r) for r in rows]
+
+    def move_folder(self, folder_id: int, direction: int) -> None:
+        """Меняет порядок папки: direction=-1 вверх, +1 вниз."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, COALESCE(sort_order, id) AS ord FROM folders ORDER BY ord, id"
+            ).fetchall()
+            ids = [r["id"] for r in rows]
+            try:
+                idx = ids.index(folder_id)
+            except ValueError:
+                return
+            swap = idx + direction
+            if swap < 0 or swap >= len(ids):
+                return
+            a_id, b_id = rows[idx]["id"], rows[swap]["id"]
+            a_ord, b_ord = rows[idx]["ord"], rows[swap]["ord"]
+            conn.execute("UPDATE folders SET sort_order = ? WHERE id = ?", (b_ord, a_id))
+            conn.execute("UPDATE folders SET sort_order = ? WHERE id = ?", (a_ord, b_id))
 
     # ── Контент в папках ────────────────────────────────────────────────────
 

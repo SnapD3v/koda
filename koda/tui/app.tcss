@@ -134,6 +134,21 @@ Screen {
     height: 1;
 }
 
+#search-clear-history {
+    height: 1;
+    width: auto;
+    margin-bottom: 1;
+    background: transparent;
+    color: $text-muted;
+    border: none;
+    padding: 0 1;
+}
+
+#search-clear-history:hover {
+    color: $error;
+    background: transparent;
+}
+
 #results-list {
     height: 1fr;
     border: tall $border;
@@ -196,6 +211,10 @@ FolderPickScreen {
     color: $text-muted;
     margin-bottom: 1;
     height: 1;
+}
+
+#lib-search {
+    margin-bottom: 1;
 }
 
 #lib-folders,
@@ -298,11 +317,46 @@ DownloadModal {
     height: 1;
 }
 
+#dl-selection {
+    height: auto;
+}
+
 #dl-episodes {
     height: auto;
     max-height: 14;
     border: tall $border;
     margin-bottom: 1;
+}
+
+#dl-progress-list {
+    height: auto;
+    max-height: 14;
+    border: tall $border;
+    margin-bottom: 1;
+}
+
+EpisodeProgressItem {
+    height: 1;
+    padding: 0 1;
+}
+
+.ep-prog-row {
+    height: 1;
+    align: left middle;
+}
+
+.ep-prog-name {
+    width: 8;
+}
+
+.ep-prog-icon {
+    width: 3;
+    text-align: center;
+}
+
+.ep-prog-info {
+    width: 1fr;
+    color: $text-muted;
 }
 
 #dl-sel-row {
@@ -326,6 +380,35 @@ DownloadModal {
 }
 
 #dl-btn-row Button {
+    width: 1fr;
+}
+
+/* ── KeysHelpModal ──────────────────────────────────────────────────────── */
+
+KeysHelpModal {
+    align: center middle;
+}
+
+#kh-container {
+    width: 52;
+    height: auto;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#kh-title {
+    text-align: center;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#kh-body {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#kh-close {
     width: 1fr;
 }
 

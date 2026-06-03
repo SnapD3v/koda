@@ -21,9 +21,10 @@ class FolderItem(ListItem):
 
 
 class FolderContentItem(ListItem):
-    def __init__(self, item: dict) -> None:
+    def __init__(self, item: dict, progress: dict | None = None) -> None:
         super().__init__()
         self.item = item
+        self._progress = progress
 
     def compose(self) -> ComposeResult:
         icons = {
@@ -33,7 +34,20 @@ class FolderContentItem(ListItem):
         }
         icon = icons.get(self.item.get("type", ""), "▶")
         year = f"({self.item['year']})" if self.item.get("year") else ""
-        yield Label(f"{icon} {self.item['title']} {year}")
+
+        prog_text = ""
+        if self._progress and (self._progress.get("timecode") or 0) > 5:
+            s = self._progress.get("season", 1)
+            e = self._progress.get("episode", 1)
+            tc = int(self._progress["timecode"])
+            mins, secs = tc // 60, tc % 60
+            is_series = self.item.get("type") not in ("movie", "foreign-movie", "russian-movie")
+            if is_series:
+                prog_text = f"  [dim]▶ С{s}Е{e} {mins}:{secs:02d}[/dim]"
+            else:
+                prog_text = f"  [dim]▶ {mins}:{secs:02d}[/dim]"
+
+        yield Label(f"{icon} {self.item['title']} {year}{prog_text}")
 
 
 # ── New-folder modal ─────────────────────────────────────────────────────────
@@ -74,19 +88,23 @@ class LibraryScreen(Screen):
     """Экран библиотеки: папки и их содержимое."""
 
     BINDINGS = [
-        Binding("escape", "back_or_close", "Назад"),
-        Binding("n",      "new_folder",    "Новая папка"),
-        Binding("d",      "delete",        "Удалить"),
+        Binding("escape",   "back_or_close", "Назад"),
+        Binding("n",        "new_folder",    "Новая папка"),
+        Binding("d",        "delete",        "Удалить"),
+        Binding("alt+up",   "folder_up",   "Вверх", show=False, priority=True),
+        Binding("alt+down", "folder_down", "Вниз",  show=False, priority=True),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self._current_folder: dict | None = None
+        self._folder_items: list[dict] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Vertical(
             Static("", id="lib-status"),
+            Input(placeholder="Поиск в библиотеке...", id="lib-search", classes="hidden"),
             ContentSwitcher(
                 ListView(id="lib-folders"),
                 ListView(id="lib-items"),
@@ -109,7 +127,7 @@ class LibraryScreen(Screen):
             for f in folders:
                 lst.append(FolderItem(f))
             self.query_one("#lib-status", Static).update(
-                f"Папок: {len(folders)}  •  N — создать  •  D — удалить"
+                f"Папок: {len(folders)}  •  N — создать  •  D — удалить  •  Alt+↑↓ — порядок"
             )
         else:
             self.query_one("#lib-status", Static).update(
@@ -117,20 +135,33 @@ class LibraryScreen(Screen):
             )
 
     def _load_items(self, folder_id: int) -> None:
-        items = self.app.db.get_folder_items(folder_id)
+        self._folder_items = self.app.db.get_folder_items(folder_id)
+        self._render_items(self._folder_items)
+
+    def _render_items(self, items: list[dict]) -> None:
         lst = self.query_one("#lib-items", ListView)
         lst.clear()
+        folder_name = self._current_folder["name"] if self._current_folder else ""
         if items:
             for item in items:
-                lst.append(FolderContentItem(item))
-            folder_name = self._current_folder["name"] if self._current_folder else ""
+                progress = self.app.db.get_progress(item["kodik_id"])
+                lst.append(FolderContentItem(item, progress))
             self.query_one("#lib-status", Static).update(
                 f"[bold]{folder_name}[/bold]  •  {len(items)} эл.  •  Escape — назад"
             )
         else:
+            q = self.query_one("#lib-search", Input).value.strip()
+            msg = f'Ничего не найдено по "{q}"' if q else "Папка пуста."
             self.query_one("#lib-status", Static).update(
-                "Папка пуста.  Escape — назад."
+                f"[bold]{folder_name}[/bold]  •  {msg}  •  Escape — назад"
             )
+
+    def _filter_items(self, query: str) -> None:
+        if not query:
+            self._render_items(self._folder_items)
+            return
+        q = query.lower()
+        self._render_items([i for i in self._folder_items if q in i["title"].lower()])
 
     # ── List events ──────────────────────────────────────────────────────────
 
@@ -141,12 +172,17 @@ class LibraryScreen(Screen):
         self._current_folder = event.item.folder
         self._load_items(self._current_folder["id"])
         self.query_one(ContentSwitcher).current = "lib-items"
+        self.query_one("#lib-search", Input).remove_class("hidden")
 
     @on(ListView.Selected, "#lib-items")
     def on_item_selected(self, event: ListView.Selected) -> None:
         if not isinstance(event.item, FolderContentItem):
             return
         self._open_detail(event.item.item)
+
+    @on(Input.Changed, "#lib-search")
+    def on_lib_search_changed(self, event: Input.Changed) -> None:
+        self._filter_items(event.value.strip())
 
     @work
     async def _open_detail(self, item: dict) -> None:
@@ -162,12 +198,10 @@ class LibraryScreen(Screen):
         variants: list = []
         try:
             results = await self.app.kodik.search(item["title"], limit=25)
-            # Group by (title, year) to collect all translations, same as search screen
             groups: dict[tuple, list] = {}
             for r in results:
                 key = (r.title.lower(), r.year)
                 groups.setdefault(key, []).append(r)
-            # Find the group that contains our saved kodik_id
             for group in groups.values():
                 if any(r.id == item["kodik_id"] for r in group):
                     variants = group
@@ -200,6 +234,10 @@ class LibraryScreen(Screen):
     def action_back_or_close(self) -> None:
         if self._current_folder is not None:
             self._current_folder = None
+            self._folder_items = []
+            search = self.query_one("#lib-search", Input)
+            search.value = ""
+            search.add_class("hidden")
             self.query_one(ContentSwitcher).current = "lib-folders"
             self._load_folders()
         else:
@@ -243,4 +281,25 @@ class LibraryScreen(Screen):
             item = highlighted.item
             self.app.db.remove_from_folder(self._current_folder["id"], item["kodik_id"])
             self.app.notify(f'"{item["title"]}" удалено из папки')
-            self._load_items(self._current_folder["id"])
+            self._folder_items = [i for i in self._folder_items if i["kodik_id"] != item["kodik_id"]]
+            self._filter_items(self.query_one("#lib-search", Input).value.strip())
+
+    def action_folder_up(self) -> None:
+        if self._current_folder is not None:
+            return
+        lst = self.query_one("#lib-folders", ListView)
+        highlighted = lst.highlighted_child
+        if not isinstance(highlighted, FolderItem):
+            return
+        self.app.db.move_folder(highlighted.folder["id"], -1)
+        self._load_folders()
+
+    def action_folder_down(self) -> None:
+        if self._current_folder is not None:
+            return
+        lst = self.query_one("#lib-folders", ListView)
+        highlighted = lst.highlighted_child
+        if not isinstance(highlighted, FolderItem):
+            return
+        self.app.db.move_folder(highlighted.folder["id"], 1)
+        self._load_folders()

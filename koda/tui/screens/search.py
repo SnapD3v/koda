@@ -1,7 +1,7 @@
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.binding import Binding
-from textual.widgets import Header, Footer, Input, ListView, ListItem, Label, Static
+from textual.widgets import Header, Footer, Input, ListView, ListItem, Label, Static, Button
 from textual.containers import Vertical, Horizontal
 from textual import work, on
 
@@ -41,8 +41,8 @@ class SearchScreen(Screen):
     ]
 
     _search_timer = None
-
     _all_variants: dict = {}
+    _scroll_index: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -52,6 +52,7 @@ class SearchScreen(Screen):
                 id="search-input",
             ),
             Static("", id="search-status"),
+            Button("✕ Очистить историю", id="search-clear-history", classes="hidden"),
             ListView(id="results-list"),
             id="search-container",
         )
@@ -68,13 +69,17 @@ class SearchScreen(Screen):
         results_list = self.query_one("#results-list", ListView)
         results_list.clear()
 
+        clear_btn = self.query_one("#search-clear-history", Button)
+
         if not history:
             self.query_one("#search-status", Static).update(
                 "Начните вводить запрос для поиска"
             )
+            clear_btn.add_class("hidden")
             return
 
         self.query_one("#search-status", Static).update("Недавние запросы:")
+        clear_btn.remove_class("hidden")
         for query in history:
             results_list.append(ListItem(Label(f"🕐 {query}"), name=query))
 
@@ -89,14 +94,13 @@ class SearchScreen(Screen):
         if not query:
             self._show_history()
             return
+        self.query_one("#search-clear-history", Button).add_class("hidden")
         if len(query) < 2:
             self.query_one("#search-status", Static).update("Введите хотя бы 2 символа для поиска")
             return
         
-        self._search_timer = self.set_timer(0.4, lambda: self._do_search(query))
-
         self.query_one("#search-status", Static).update("Поиск...")
-        self._do_search(query)
+        self._search_timer = self.set_timer(0.4, lambda: self._do_search(query))
 
     @work(exclusive=True)
     async def _do_search(self, query: str) -> None:
@@ -147,8 +151,18 @@ class SearchScreen(Screen):
             variants = self._all_variants.get(key, [item.result])
             self.app.push_screen(DetailScreen(item.result, variants))
 
-    def on_screen_resume(self) -> None:
-        """Вызывается когда возвращаемся на этот экран."""
+    @on(Button.Pressed, "#search-clear-history")
+    def on_clear_history(self) -> None:
+        self.app.db.clear_history()
+        self._show_history()
+        self.app.notify("История очищена")
+
+    def on_screen_suspend(self) -> None:
         lst = self.query_one("#results-list", ListView)
-        lst.index = None
+        self._scroll_index = lst.index or 0
+
+    def on_screen_resume(self) -> None:
+        lst = self.query_one("#results-list", ListView)
+        if self._scroll_index and len(lst) > 0:
+            lst.move_cursor(row=self._scroll_index)
         self.query_one("#search-input", Input).focus()

@@ -16,6 +16,7 @@ class DetailScreen(Screen):
     BINDINGS = [
         Binding("escape", "app.pop_screen", "Назад"),
         Binding("p",      "play_default",   "Смотреть"),
+        Binding("s",      "skip_next",      "Пропустить", show=False),
     ]
 
     def __init__(self, result: SearchResult, variants: list[SearchResult] | None = None) -> None:
@@ -28,6 +29,9 @@ class DetailScreen(Screen):
 
         self._selected_season:  str = ""
         self._selected_episode: str = ""
+        self._next_season:  str = ""
+        self._next_episode: str = ""
+        self._next_ep_timer = None
         if result.seasons:
             first = next(iter(sorted(result.seasons, key=lambda s: int(s) if s.isdigit() else 0)))
             self._selected_season = first
@@ -267,10 +271,15 @@ class DetailScreen(Screen):
         quality        = self.app.config.get("quality", "720")
         token          = self.app.config.get("token", "")
         player         = self.app.config.get("player", "mpv")
-        title          = f"{self._current.title} — {self._current.translation.title}"
         kodik_id       = self.result.id
         season         = int(self._selected_season)  if self._selected_season.isdigit()  else 1
         episode        = int(self._selected_episode) if self._selected_episode.isdigit() else 1
+        ep_tag = f" (С{season} Э{episode})" if self._selected_season else ""
+        title  = f"{self._current.title}{ep_tag} — {self._current.translation.title}"
+        base   = self._current.title_orig or self._current.title
+        oscc_title = (
+            f"{base} S{season:02d}E{episode:02d}" if self._selected_season else base
+        )
         translation_id = next((i for i, v in enumerate(self.variants) if v is self._current), 0)
         media_title    = self._current.title
         media_type     = self.result.type
@@ -301,7 +310,7 @@ class DetailScreen(Screen):
             self.app.call_from_thread(
                 lambda: self.query_one("#detail-status", Static).update("Запуск плеера...")
             )
-            final_tc = play(url=url, player=player, title=title, start_from=start_from)
+            final_tc = play(url=url, player=player, title=title, start_from=start_from, oscc_title=oscc_title)
             self.app.db.save_progress(kodik_id, season=season, episode=episode, timecode=final_tc, translation_id=translation_id)
 
             if final_tc > 5:
@@ -316,6 +325,15 @@ class DetailScreen(Screen):
                         "poster_url": poster_url,
                     })
 
+                next_ep = self._find_next_episode(str(season), str(episode))
+                if next_ep:
+                    _ns, _ne = next_ep
+                    self._progress = self.app.db.get_progress(kodik_id)
+                    self.app.call_from_thread(
+                        lambda ns=_ns, ne=_ne: self._schedule_next_episode(ns, ne)
+                    )
+                    return
+
             self._progress = self.app.db.get_progress(kodik_id)
             self.app.call_from_thread(
                 lambda: self.query_one("#detail-status", Static).update("")
@@ -327,6 +345,70 @@ class DetailScreen(Screen):
             )
         finally:
             self._is_playing = False
+
+    # ── Auto-advance ──────────────────────────────────────────────────────────
+
+    def _find_next_episode(self, season: str, episode: str) -> tuple[str, str] | None:
+        seasons = self._current.seasons or self.result.seasons
+        if not seasons:
+            return None
+        eps = seasons.get(season, {}).get("episodes", {})
+        ep_keys = sorted(eps.keys(), key=lambda e: int(e) if e.isdigit() else 0)
+        try:
+            idx = ep_keys.index(episode)
+        except ValueError:
+            return None
+        if idx + 1 < len(ep_keys):
+            return (season, ep_keys[idx + 1])
+        season_keys = sorted(seasons.keys(), key=lambda s: int(s) if s.isdigit() else 0)
+        try:
+            s_idx = season_keys.index(season)
+        except ValueError:
+            return None
+        if s_idx + 1 < len(season_keys):
+            next_s = season_keys[s_idx + 1]
+            next_eps = seasons.get(next_s, {}).get("episodes", {})
+            if next_eps:
+                first = sorted(next_eps.keys(), key=lambda e: int(e) if e.isdigit() else 0)[0]
+                return (next_s, first)
+        return None
+
+    def _schedule_next_episode(self, season: str, episode: str) -> None:
+        self._next_season  = season
+        self._next_episode = episode
+        s = int(season)  if season.isdigit()  else season
+        e = int(episode) if episode.isdigit() else episode
+        self.query_one("#detail-status", Static).update(
+            f"[dim]Следующий: С{s}Э{e} — через 5 сек  •  [bold]S[/bold] — пропустить[/dim]"
+        )
+        self._next_ep_timer = self.set_timer(5.0, self._auto_next_episode)
+
+    def _auto_next_episode(self) -> None:
+        self._next_ep_timer = None
+        if not self.is_mounted:
+            return
+        self._selected_season  = self._next_season
+        self._selected_episode = self._next_episode
+        try:
+            self.query_one("#season-select", Select).value = self._selected_season
+            s, e = self._selected_season, self._selected_episode
+            self.call_after_refresh(lambda: self._apply_saved_episode(s, e))
+        except Exception:
+            pass
+        self.query_one("#detail-status", Static).update("")
+        if not self._is_playing:
+            self._stream_and_play()
+
+    def action_skip_next(self) -> None:
+        if self._next_ep_timer is not None:
+            self._next_ep_timer.stop()
+            self._next_ep_timer = None
+        self.query_one("#detail-status", Static).update("")
+
+    def on_unmount(self) -> None:
+        if self._next_ep_timer is not None:
+            self._next_ep_timer.stop()
+            self._next_ep_timer = None
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

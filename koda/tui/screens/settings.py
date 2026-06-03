@@ -8,7 +8,7 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Button, Input, Label, Select, Static
 from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual import on
+from textual import on, work
 
 from koda.config import save_config
 from koda.player.launcher import find_player
@@ -47,6 +47,7 @@ class SettingsScreen(Screen):
         yield ScrollableContainer(
             Label("Токен Kodik API:", classes="s-label"),
             Input(value=cfg.get("token", ""), placeholder="Введи токен...", id="s-token"),
+            Static("", id="s-token-status"),
 
             Label("Плеер:", classes="s-label"),
             Select(
@@ -126,6 +127,31 @@ class SettingsScreen(Screen):
 
     @on(Button.Pressed, "#s-save")
     def on_save(self) -> None:
+        self._do_save()
+
+    @work
+    async def _do_save(self) -> None:
+        token = self.query_one("#s-token", Input).value.strip()
+        token_status = self.query_one("#s-token-status", Static)
+        save_btn = self.query_one("#s-save", Button)
+
+        if token:
+            save_btn.disabled = True
+            token_status.update("[dim]Проверяем токен...[/dim]")
+            try:
+                from koda.api.kodik import KodikClient
+                async with KodikClient(token) as client:
+                    await client.search("test", limit=1)
+                token_status.update("[green]✓ Токен действителен[/green]")
+            except Exception:
+                token_status.update("[red]✗ Токен недействителен — проверь и попробуй снова[/red]")
+                save_btn.disabled = False
+                return
+            finally:
+                save_btn.disabled = False
+        else:
+            token_status.update("")
+
         player_select = self.query_one("#s-player", Select).value
         if player_select == "custom":
             player_val = self.query_one("#s-player-custom", Input).value.strip() or "mpv"
@@ -133,7 +159,7 @@ class SettingsScreen(Screen):
             player_val = str(player_select)
 
         new_cfg = dict(self.app.config)
-        new_cfg["token"]         = self.query_one("#s-token",   Input).value.strip()
+        new_cfg["token"]         = token
         new_cfg["player"]        = player_val
         new_cfg["quality"]       = str(self.query_one("#s-quality",  Select).value)
         new_cfg["downloads_dir"] = self.query_one("#s-dldir",   Input).value.strip() or str(

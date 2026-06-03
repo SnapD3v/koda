@@ -1,7 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
+from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 textual_datas, textual_bins, textual_hiddenimports = collect_all("textual")
+
+# Bundle bundled/mpv/ if the directory exists (Windows portable with mpv)
+_mpv_dir = Path("bundled/mpv")
+_extra_datas = []
+if _mpv_dir.is_dir():
+    _extra_datas.append(("bundled/mpv", "mpv"))
 
 a = Analysis(
     ["koda/__main__.py"],
@@ -10,10 +17,16 @@ a = Analysis(
     datas=[
         ("koda/tui/app.tcss", "koda/tui"),
         *textual_datas,
+        *_extra_datas,
     ],
     hiddenimports=[
         "tomllib",
         "tomli_w",
+        "plyer",
+        "plyer.platforms",
+        "plyer.platforms.win.notification",
+        "plyer.platforms.macosx.notification",
+        "plyer.platforms.linux.notification",
         "koda.tui.screens.home",
         "koda.tui.screens.search",
         "koda.tui.screens.detail",
@@ -22,6 +35,8 @@ a = Analysis(
         "koda.tui.screens.settings",
         "koda.tui.screens.version",
         "koda.tui.screens.folder_pick",
+        "koda.tui.screens.keys_help",
+        "koda.updater",
         *textual_hiddenimports,
     ],
     hookspath=[],
