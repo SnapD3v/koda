@@ -1,3 +1,4 @@
+import re
 import webbrowser
 
 import httpx
@@ -5,8 +6,8 @@ import httpx
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Button, Static
-from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.widgets import Header, Footer, Button, Markdown, Static
+from textual.containers import Horizontal, ScrollableContainer
 from textual import on, work
 
 from koda import __version__
@@ -14,6 +15,13 @@ from koda import __version__
 GITHUB_REPO = "SnapD3v/koda"
 _API_URL    = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 _GH_URL     = f"https://github.com/{GITHUB_REPO}"
+
+_STRIP_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _clean_body(text: str) -> str:
+    text = _STRIP_RE.sub("", text)
+    return text.strip()
 
 
 class VersionScreen(Screen):
@@ -28,7 +36,8 @@ class VersionScreen(Screen):
         yield Header()
         yield ScrollableContainer(
             Static(self._local_info(), id="ver-local"),
-            Static("[dim]Проверка обновлений...[/dim]", id="ver-remote"),
+            Static("[dim]Проверка обновлений...[/dim]", id="ver-header"),
+            Markdown("", id="ver-body"),
             Horizontal(
                 Button("Открыть GitHub",         id="ver-gh"),
                 Button("Скачать последний билд", id="ver-dl"),
@@ -52,6 +61,8 @@ class VersionScreen(Screen):
 
     @work
     async def _fetch_latest(self) -> None:
+        header = self.query_one("#ver-header", Static)
+        body_widget = self.query_one("#ver-body", Markdown)
         try:
             async with httpx.AsyncClient(timeout=8) as client:
                 r = await client.get(
@@ -60,43 +71,27 @@ class VersionScreen(Screen):
                     follow_redirects=True,
                 )
             if r.status_code == 404:
-                self._set_remote("[dim]Релизы ещё не созданы.[/dim]")
+                header.update("[dim]Релизы ещё не созданы.[/dim]")
                 return
             if r.status_code != 200:
-                self._set_remote(
-                    f"[yellow]GitHub API вернул {r.status_code}[/yellow]"
-                )
+                header.update(f"[yellow]GitHub API вернул {r.status_code}[/yellow]")
                 return
 
-            data        = r.json()
-            tag         = data.get("tag_name", "?")
-            body        = (data.get("body") or "").strip()[:600]
-            pub         = (data.get("published_at") or "")[:10]
-            html        = data.get("html_url", _GH_URL)
-            self._latest_url = html
+            data = r.json()
+            tag  = data.get("tag_name", "?")
+            body = _clean_body(data.get("body") or "")
+            pub  = (data.get("published_at") or "")[:10]
+            self._latest_url = data.get("html_url", _GH_URL)
 
             status = (
                 "[green]✓ актуально[/green]"
                 if tag.lstrip("v") == __version__
                 else f"[yellow]⚠ доступно обновление {tag}[/yellow]"
             )
-
-            lines = [
-                "─── Последний релиз ───",
-                f"Версия: [bold]{tag}[/bold]   {status}",
-                f"Дата:   {pub}",
-                "",
-                body if body else "(нет описания)",
-            ]
-            self._set_remote("\n".join(lines))
+            header.update(f"Версия: [bold]{tag}[/bold]   {status}\nДата:   {pub}\n")
+            await body_widget.update(body if body else "*нет описания*")
         except Exception as e:
-            self._set_remote(f"[red]Ошибка при проверке обновлений: {e}[/red]")
-
-    def _set_remote(self, text: str) -> None:
-        try:
-            self.query_one("#ver-remote", Static).update(text)
-        except Exception:
-            pass
+            header.update(f"[red]Ошибка при проверке обновлений: {e}[/red]")
 
     @on(Button.Pressed, "#ver-gh")
     def on_open_github(self) -> None:

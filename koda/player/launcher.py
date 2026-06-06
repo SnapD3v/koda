@@ -20,11 +20,18 @@ def _find_oscc() -> bool:
             candidates.append(Path(sys.executable).parent / "mpv" / "scripts" / "oscc.lua")
         except Exception:
             pass
+    mpv_exe = find_player("mpv")
+    if mpv_exe:
+        base = Path(mpv_exe).parent
+        candidates += [
+            base / "scripts" / "oscc.lua",
+            base / "mpv" / "scripts" / "oscc.lua",
+            base / "portable_config" / "scripts" / "oscc.lua",
+        ]
     return any(p.exists() for p in candidates)
 
 
 def find_player(player: str = "mpv") -> str | None:
-    # Bundled mpv inside a PyInstaller single-file build
     if getattr(sys, "frozen", False) and player == "mpv":
         bundled = Path(sys._MEIPASS) / "mpv" / "mpv.exe"
         if bundled.exists():
@@ -72,7 +79,6 @@ def _build_args(exe: str, url: str, title: str, start_from: float, oscc_title: s
 
 
 def _read_timecode_after(launch_time: float) -> float:
-    """Parse start= from the watch-later file written most recently after launch_time."""
     try:
         candidates = [
             f for f in WATCH_LATER_DIR.glob("*")
@@ -96,10 +102,6 @@ def play(
     start_from: float = 0.0,
     oscc_title: str = "",
 ) -> float:
-    """
-    Opens the stream in the player. Blocks until the player exits.
-    Returns the timecode (seconds) where playback stopped, or 0.0 if unknown.
-    """
     exe = find_player(player)
     if not exe:
         raise FileNotFoundError(
@@ -112,14 +114,14 @@ def play(
 
     if "vlc" not in Path(exe).stem.lower():
         args += [
-            "--input-terminal=no",  # don't read escape codes from the shared terminal stdin
+            "--input-terminal=no",
             "--save-position-on-quit",
             f"--watch-later-dir={WATCH_LATER_DIR}",
         ]
 
     launch_time = time.time()
     subprocess.run(args, check=False,
-                   stdin=subprocess.DEVNULL,   # cut off Textual's mouse-tracking bytes
+                   stdin=subprocess.DEVNULL,
                    stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL)
 
