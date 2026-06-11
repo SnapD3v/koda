@@ -42,6 +42,7 @@ a = Analysis(
         "koda.tui.screens.folder_pick",
         "koda.tui.screens.keys_help",
         "koda.tui.screens.resume_modal",
+        "koda.tui.widgets",
         "koda.tui.widgets.poster",
         "koda.updater",
         *textual_hiddenimports,

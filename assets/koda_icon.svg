@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- background -->
+  <rect x="0" y="0" width="512" height="512" rx="102" fill="#0f0f0f"/>
+  <!-- letterbox frame -->
+  <rect x="48" y="112" width="416" height="288" rx="14" fill="#181818"/>
+  <!-- K: stem -->
+  <rect x="188" y="170" width="28" height="172" rx="6" fill="#f0f0f0"/>
+  <!-- K: top arm -->
+  <line x1="213" y1="256" x2="318" y2="170" stroke="#f0f0f0" stroke-width="28" stroke-linecap="round"/>
+  <!-- K: bottom arm -->
+  <line x1="213" y1="256" x2="318" y2="342" stroke="#f0f0f0" stroke-width="28" stroke-linecap="round"/>
+  <!-- caption strip -->
+  <rect x="156" y="432" width="200" height="8" rx="4" fill="#222"/>
+</svg>

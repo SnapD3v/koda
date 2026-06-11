@@ -7,9 +7,9 @@ CONFIG_DIR  = Path.home() / ".config" / "koda"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
 DEFAULT_CONFIG = {
-    "token":        "",
-    "player":       "mpv",
-    "quality":      "720",
+    "token": "",
+    "player": "mpv",
+    "quality": "720",
     "downloads_dir": str(Path.home() / "Downloads" / "Koda"),
 }
 
