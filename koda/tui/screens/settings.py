@@ -163,10 +163,9 @@ class SettingsScreen(Screen):
         new_cfg["token"]         = token
         new_cfg["player"]        = player_val
         new_cfg["quality"]       = str(self.query_one("#s-quality",  Select).value)
-        new_cfg["downloads_dir"] = self.query_one("#s-dldir",   Input).value.strip() or str(
+        new_cfg["downloads_dir"] = self.query_one("#s-dldir",  Input).value.strip() or str(
             Path.home() / "Videos" / "Koda"
         )
-
         save_config(new_cfg)
         self.app.config = new_cfg
         self.app.kodik  = type(self.app.kodik)(new_cfg.get("token", ""))

@@ -66,10 +66,9 @@ class KodikClient:
     async def search(
         self,
         query: str,
-        media_type: Optional[str] = None,
         limit: int = 20,
-    ) -> list[SearchResult]:
-        """Поиск контента через Kodik API."""
+    ) -> tuple[list[SearchResult], Optional[str]]:
+        """Поиск контента через Kodik API. Возвращает (results, next_page_url)."""
         if not self.token:
             raise ValueError("Токен Kodik не задан. Укажи его в ~/.config/koda/config.toml или $env:KODIK_TOKEN")
 
@@ -80,8 +79,6 @@ class KodikClient:
             "with_episodes":      "true",
             "limit":              limit,
         }
-        if media_type:
-            params["type"] = media_type
 
         response = await self._http.post(f"{API_BASE}/search", data=params)
         if not response.is_success:
@@ -93,7 +90,22 @@ class KodikClient:
             )
 
         data = response.json()
-        return [self._parse_result(r) for r in data.get("results", [])]
+        results   = [self._parse_result(r) for r in data.get("results", [])]
+        next_page = data.get("next_page") or None
+        return results, next_page
+
+    async def search_next(
+        self,
+        next_page_url: str,
+    ) -> tuple[list[SearchResult], Optional[str]]:
+        """Загружает следующую страницу по URL из предыдущего ответа."""
+        response = await self._http.get(next_page_url)
+        if not response.is_success:
+            return [], None
+        data      = response.json()
+        results   = [self._parse_result(r) for r in data.get("results", [])]
+        next_page = data.get("next_page") or None
+        return results, next_page
 
     async def get_stream_url(
         self,

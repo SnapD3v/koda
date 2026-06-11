@@ -19,9 +19,9 @@ class KodaApp(App):
     ]
 
     def __init__(self):
-        super().__init__()
         self.config = load_config()
-        self.db     = Database()
+        super().__init__()
+        self.db = Database()
         self.db.init()
 
     def on_mount(self) -> None:

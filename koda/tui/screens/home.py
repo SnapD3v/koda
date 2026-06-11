@@ -1,5 +1,3 @@
-import asyncio
-
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.binding import Binding
@@ -8,7 +6,7 @@ from textual.containers import Vertical, Horizontal
 from textual import on, work
 
 from koda import __version__
-from koda.api.kodik import KodikClient, SearchResult, Translation
+from koda.api.kodik import SearchResult, Translation
 
 _TYPE_ICONS = {
     "movie": "🎬", "anime": "🎌", "serial": "📺",
@@ -119,7 +117,7 @@ class HomeScreen(Screen):
         full_result: SearchResult | None = None
         variants: list[SearchResult] = []
         try:
-            results = await self.app.kodik.search(item["title"], limit=25)
+            results, _ = await self.app.kodik.search(item["title"], limit=25)
             groups: dict[tuple, list] = {}
             for r in results:
                 key = (r.title.lower(), r.year)

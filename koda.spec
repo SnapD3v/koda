@@ -10,6 +10,11 @@ _extra_datas = []
 if _mpv_dir.is_dir():
     _extra_datas.append(("bundled/mpv", "mpv"))
 
+# Use custom icon if present in assets/ (Windows only — .ico format)
+import sys as _sys
+_icon_file = Path("assets/koda_icon.ico") if _sys.platform == "win32" else None
+_icon = str(_icon_file) if (_icon_file and _icon_file.exists()) else None
+
 a = Analysis(
     ["koda/__main__.py"],
     pathex=["."],
@@ -36,6 +41,8 @@ a = Analysis(
         "koda.tui.screens.version",
         "koda.tui.screens.folder_pick",
         "koda.tui.screens.keys_help",
+        "koda.tui.screens.resume_modal",
+        "koda.tui.widgets.poster",
         "koda.updater",
         *textual_hiddenimports,
     ],
@@ -65,5 +72,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=_icon,
 )

@@ -223,13 +223,21 @@ class LocalFilesScreen(Screen):
 
 # ── Download modal ────────────────────────────────────────────────────────────
 
-class DownloadModal(ModalScreen):
+class DownloadModal(ModalScreen[int]):
 
     BINDINGS = [Binding("escape", "close", "Закрыть")]
 
-    def __init__(self, result: SearchResult, token: str, quality: str) -> None:
+    def __init__(
+        self,
+        variants: list[SearchResult],
+        active_idx: int,
+        token: str,
+        quality: str,
+    ) -> None:
         super().__init__()
-        self.result        = result
+        self.variants      = variants
+        self._active_idx   = active_idx
+        self.result        = variants[active_idx]
         self.token         = token
         self.quality       = quality
         self._downloading     = False
@@ -241,18 +249,22 @@ class DownloadModal(ModalScreen):
     # ── Compose ───────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
-        has_seasons = bool(self.result.seasons)
+        has_seasons    = bool(self.result.seasons)
+        has_variants   = len(self.variants) > 1
         body: list = [Label(f"Скачать: {self.result.title}", id="dl-title")]
 
+        if has_variants:
+            tr_opts = [
+                (f"{v.translation.title} [{v.translation.type}]", str(i))
+                for i, v in enumerate(self.variants)
+            ]
+            body.append(Label("Озвучка:", classes="dl-label"))
+            body.append(Select(tr_opts, value=str(self._active_idx), id="dl-translation"))
+
         if has_seasons:
-            seasons     = sorted(self.result.seasons, key=lambda s: int(s) if s.isdigit() else 0)
-            first       = seasons[0]
-            season_opts = [(f"Сезон {s}", s) for s in seasons]
             body.append(
                 Vertical(
-                    Label("Сезон:", classes="dl-label"),
-                    Select(season_opts, value=first, id="dl-season"),
-                    SelectionList(*self._ep_selections(first), id="dl-episodes"),
+                    SelectionList(*self._ep_selections(), id="dl-episodes"),
                     Horizontal(
                         Button("Все",   id="dl-all",  variant="default"),
                         Button("Снять", id="dl-none", variant="default"),
@@ -276,7 +288,17 @@ class DownloadModal(ModalScreen):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def _ep_selections(self, season: str) -> list[tuple[str, str]]:
+    def _get_season(self) -> str:
+        """Returns the first (only) season key of the active result."""
+        seasons = self.result.seasons
+        if not seasons:
+            return ""
+        return sorted(seasons, key=lambda s: int(s) if s.isdigit() else 0)[0]
+
+    def _ep_selections(self) -> list[tuple[str, str]]:
+        season = self._get_season()
+        if not season:
+            return []
         eps  = self.result.seasons.get(season, {}).get("episodes", {})
         keys = sorted(eps, key=lambda e: int(e) if e.isdigit() else 0)
         return [(f"Эпизод {e}", e) for e in keys]
@@ -304,14 +326,19 @@ class DownloadModal(ModalScreen):
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
-    @on(Select.Changed, "#dl-season")
-    def on_season_changed(self, event: Select.Changed) -> None:
+    @on(Select.Changed, "#dl-translation")
+    def on_translation_changed(self, event: Select.Changed) -> None:
         if self._downloading:
             return
-        ep_list = self.query_one("#dl-episodes", SelectionList)
-        ep_list.clear_options()
-        for prompt, value in self._ep_selections(str(event.value)):
-            ep_list.add_option((prompt, value))
+        self._active_idx = int(event.value)
+        self.result      = self.variants[self._active_idx]
+        try:
+            ep_list = self.query_one("#dl-episodes", SelectionList)
+            ep_list.clear_options()
+            for prompt, value in self._ep_selections():
+                ep_list.add_option((prompt, value))
+        except Exception:
+            pass
 
     @on(Button.Pressed, "#dl-all")
     def on_select_all(self) -> None:
@@ -324,7 +351,7 @@ class DownloadModal(ModalScreen):
     @on(Button.Pressed, "#dl-close")
     def action_close(self) -> None:
         if not self._downloading:
-            self.dismiss(None)
+            self.dismiss(self._active_idx)
 
     @on(Button.Pressed, "#dl-pause")
     def on_pause(self) -> None:
@@ -353,8 +380,8 @@ class DownloadModal(ModalScreen):
         selected_eps: list[str] = []
 
         if self.result.seasons:
+            season = self._get_season()
             try:
-                season       = str(self.query_one("#dl-season", Select).value)
                 selected_eps = [str(v) for v in self.query_one("#dl-episodes", SelectionList).selected]
             except Exception:
                 pass
@@ -365,7 +392,6 @@ class DownloadModal(ModalScreen):
                 return
             self._setup_progress_ui(selected_eps)
         else:
-            # Movie: just reveal pause button
             self.query_one("#dl-start", Button).disabled = True
             self.query_one("#dl-pause", Button).remove_class("hidden")
 
@@ -413,6 +439,8 @@ class DownloadModal(ModalScreen):
         episodes: list[str],
         status,
     ) -> None:
+        if not season:
+            season = self._get_season()
         eps_data = self.result.seasons.get(season, {}).get("episodes", {})
         out_dir  = _get_download_dir(self.app) / _safe(self.result.title) / f"Season {int(season):02d}"
         out_dir.mkdir(parents=True, exist_ok=True)

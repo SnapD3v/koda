@@ -16,7 +16,7 @@ jobs:
           - os: macos-latest
             artifact: koda-macos
           - os: ubuntu-latest
-            artifact: koda-linux
+            artifact: koda-linux.AppImage
 
     runs-on: ${{ matrix.os }}
 
@@ -35,10 +35,55 @@ jobs:
       - name: Build
         run: pyinstaller koda.spec --clean --noconfirm
 
-      - name: Rename (non-Windows)
-        if: matrix.os != 'windows-latest'
+      - name: Rename (macOS)
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: mv dist/koda dist/${{ matrix.artifact }}
+
+      - name: Build AppImage (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
+               -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+
+          mkdir -p dist/koda.AppDir/usr/bin
+          cp dist/koda dist/koda.AppDir/usr/bin/koda
+
+          cat > dist/koda.AppDir/AppRun <<'EOF'
+          #!/bin/sh
+          exec "$APPDIR/usr/bin/koda" "$@"
+          EOF
+          chmod +x dist/koda.AppDir/AppRun
+
+          cat > dist/koda.AppDir/koda.desktop <<'EOF'
+          [Desktop Entry]
+          Name=Koda
+          Exec=koda
+          Icon=koda
+          Type=Application
+          Categories=AudioVideo;
+          EOF
+
+          if [ -f assets/koda_icon.png ]; then
+            cp assets/koda_icon.png dist/koda.AppDir/koda.png
+          else
+            python3 -c "
+          import struct, zlib
+          def chunk(t, d):
+              c = zlib.crc32(t + d) & 0xffffffff
+              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', c)
+          w, h, color = 64, 64, (30, 30, 50)
+          ihdr = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
+          raw = b''.join(b'\x00' + bytes(color) * w for _ in range(h))
+          idat = zlib.compress(raw)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b'')
+          open('dist/koda.AppDir/koda.png', 'wb').write(png)
+          "
+          fi
+
+          APPIMAGE_EXTRACT_AND_RUN=1 /tmp/appimagetool dist/koda.AppDir dist/${{ matrix.artifact }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -75,7 +120,7 @@ jobs:
           path: dist
 
       - name: Make binaries executable
-        run: chmod +x dist/koda-macos dist/koda-linux || true
+        run: chmod +x dist/koda-macos dist/koda-linux.AppImage || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -92,9 +137,10 @@ jobs:
             |-----------|------|
             | Windows   | `koda.exe` |
             | macOS     | `koda-macos` |
-            | Linux     | `koda-linux` |
+            | Linux     | `koda-linux.AppImage` |
 
-            macOS/Linux: `chmod +x koda-macos && ./koda-macos`
+            macOS: `chmod +x koda-macos && ./koda-macos`
+            Linux: `chmod +x koda-linux.AppImage && ./koda-linux.AppImage`
 
             ## Зависимости (опционально)
             - **mpv** — для стриминга: https://mpv.io/installation/

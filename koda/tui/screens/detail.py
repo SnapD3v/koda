@@ -9,14 +9,16 @@ from textual import on, work
 
 from koda.api.kodik import KodikClient, SearchResult
 from koda.player.launcher import play
+from koda.tui.widgets.poster import PosterWidget, _PROTOCOL
 
 
 class DetailScreen(Screen):
 
     BINDINGS = [
-        Binding("escape", "app.pop_screen", "Назад"),
-        Binding("p",      "play_default",   "Смотреть"),
-        Binding("s",      "skip_next",      "Пропустить", show=False),
+        Binding("escape", "app.pop_screen",    "Назад"),
+        Binding("p",      "play_default",      "Смотреть"),
+        Binding("t",      "cycle_translation", "Озвучка"),
+        Binding("s",      "skip_next",         "Пропустить", show=False),
     ]
 
     def __init__(self, result: SearchResult, variants: list[SearchResult] | None = None) -> None:
@@ -45,23 +47,27 @@ class DetailScreen(Screen):
         has_variants = len(self.variants) > 1
         has_episodes = bool(self.result.seasons)
 
+        episode_widgets: list = []
+        if has_episodes:
+            episode_widgets = [
+                Label("Эпизод:"),
+                Select(self._episode_options(self._selected_season), value=self._selected_episode, id="episode-select"),
+            ]
+
         translation_widgets: list = []
         if has_variants:
             opts = [(f"{v.translation.title} [{v.translation.type}]", str(i))
                     for i, v in enumerate(self.variants)]
             translation_widgets = [Label("Озвучка:"), Select(opts, value="0", id="translation-select")]
 
-        episode_widgets: list = []
-        if has_episodes:
-            episode_widgets = [
-                Label("Сезон:"),
-                Select(self._season_options(), value=self._selected_season, id="season-select"),
-                Label("Эпизод:"),
-                Select(self._episode_options(self._selected_season), value=self._selected_episode, id="episode-select"),
-            ]
-
+        poster_url = (self.result.material_data or {}).get("poster_url")
         yield Header()
         yield ScrollableContainer(
+            *(
+                [PosterWidget(poster_url)]
+                if poster_url and _PROTOCOL != "none"
+                else []
+            ),
             Static(self._build_info(), id="detail-info"),
             id="detail-scroll",
         )
@@ -111,12 +117,8 @@ class DetailScreen(Screen):
             return
         self._selected_season  = saved_s
         self._selected_episode = saved_e
-        try:
-            self.query_one("#season-select", Select).value = saved_s
-            s, e = saved_s, saved_e
-            self.call_after_refresh(lambda: self._apply_saved_episode(s, e))
-        except Exception:
-            pass
+        s, e = saved_s, saved_e
+        self.call_after_refresh(lambda: self._apply_saved_episode(s, e))
 
     def _apply_saved_episode(self, season: str, episode: str) -> None:
         try:
@@ -129,10 +131,6 @@ class DetailScreen(Screen):
             pass
 
     # ── Season/episode helpers ────────────────────────────────────────────────
-
-    def _season_options(self) -> list[tuple[str, str]]:
-        keys = sorted(self.result.seasons, key=lambda s: int(s) if s.isdigit() else 0)
-        return [(f"Сезон {s}", s) for s in keys]
 
     def _episode_options(self, season: str) -> list[tuple[str, str]]:
         eps = self.result.seasons.get(season, {}).get("episodes", {})
@@ -184,21 +182,32 @@ class DetailScreen(Screen):
         self._current = self.variants[int(event.value)]
         self.query_one("#detail-info", Static).update(self._build_info(self._current))
 
-    @on(Select.Changed, "#season-select")
-    def on_season_changed(self, event: Select.Changed) -> None:
-        self._selected_season = str(event.value)
-        ep_opts = self._episode_options(self._selected_season)
-        self.query_one("#episode-select", Select).set_options(ep_opts)
-        self._selected_episode = ep_opts[0][1] if ep_opts else ""
-
     @on(Select.Changed, "#episode-select")
     def on_episode_changed(self, event: Select.Changed) -> None:
         self._selected_episode = str(event.value)
 
     @on(Button.Pressed, "#btn-play")
-    def action_play_default(self) -> None:
-        if not self._is_playing:
-            self._stream_and_play()
+    async def action_play_default(self) -> None:
+        if self._is_playing:
+            return
+        start_from = await self._resolve_start_from()
+        if start_from is None:
+            return
+        self._stream_and_play(start_from)
+
+    async def _resolve_start_from(self) -> float | None:
+        """Returns start timecode, 0.0 for beginning, or None if cancelled."""
+        prog = self._progress
+        if not prog:
+            return 0.0
+        season  = int(self._selected_season)  if self._selected_season.isdigit()  else 1
+        episode = int(self._selected_episode) if self._selected_episode.isdigit() else 1
+        if prog.get("season") == season and prog.get("episode") == episode:
+            tc = prog.get("timecode", 0.0)
+            if tc > 5:
+                from koda.tui.screens.resume_modal import ResumeModal
+                return await self.app.push_screen_wait(ResumeModal(tc))
+        return 0.0
 
     @on(Button.Pressed, "#btn-back")
     def on_back(self) -> None:
@@ -211,10 +220,18 @@ class DetailScreen(Screen):
     @work
     async def _open_download(self) -> None:
         from koda.tui.screens.download import DownloadModal
-        token   = self.app.config.get("token", "")
-        quality = self.app.config.get("quality", "720")
-        src = self._current if self._current.seasons else self.result
-        await self.app.push_screen_wait(DownloadModal(src, token, quality))
+        token      = self.app.config.get("token", "")
+        quality    = self.app.config.get("quality", "720")
+        active_idx = next((i for i, v in enumerate(self.variants) if v is self._current), 0)
+        new_idx    = await self.app.push_screen_wait(
+            DownloadModal(self.variants, active_idx, token, quality)
+        )
+        if isinstance(new_idx, int) and new_idx != active_idx:
+            self._current = self.variants[new_idx]
+            try:
+                self.query_one("#translation-select", Select).value = str(new_idx)
+            except Exception:
+                pass
 
     @on(Button.Pressed, "#btn-folder")
     async def on_add_to_folder(self) -> None:
@@ -226,7 +243,7 @@ class DetailScreen(Screen):
     async def _fetch_material_data(self) -> None:
         """Fetches full material_data from API (used when opening from library)."""
         try:
-            results = await self.app.kodik.search(self.result.title, limit=10)
+            results, _ = await self.app.kodik.search(self.result.title, limit=10)
             for r in results:
                 if r.id == self.result.id or (
                     r.title.lower() == self.result.title.lower() and r.year == self.result.year
@@ -265,7 +282,7 @@ class DetailScreen(Screen):
         )
 
     @work(thread=True)
-    def _stream_and_play(self) -> None:
+    def _stream_and_play(self, start_from: float = 0.0) -> None:
         self._is_playing = True
         link           = self._get_play_link()
         quality        = self.app.config.get("quality", "720")
@@ -286,13 +303,6 @@ class DetailScreen(Screen):
         media_year     = self.result.year
         media_link     = self.result.link
         poster_url     = (self.result.material_data or {}).get("poster_url")
-
-        start_from = 0.0
-        prog = self._progress
-        if prog and prog.get("season") == season and prog.get("episode") == episode:
-            tc = prog.get("timecode", 0.0)
-            if tc > 5:
-                start_from = tc
 
         self.app.call_from_thread(
             lambda: self.query_one("#detail-status", Static).update("Получаем ссылку...")
@@ -389,15 +399,21 @@ class DetailScreen(Screen):
             return
         self._selected_season  = self._next_season
         self._selected_episode = self._next_episode
-        try:
-            self.query_one("#season-select", Select).value = self._selected_season
-            s, e = self._selected_season, self._selected_episode
-            self.call_after_refresh(lambda: self._apply_saved_episode(s, e))
-        except Exception:
-            pass
+        s, e = self._selected_season, self._selected_episode
+        self.call_after_refresh(lambda: self._apply_saved_episode(s, e))
         self.query_one("#detail-status", Static).update("")
         if not self._is_playing:
-            self._stream_and_play()
+            self._stream_and_play(0.0)
+
+    def action_cycle_translation(self) -> None:
+        if len(self.variants) <= 1:
+            return
+        try:
+            sel = self.query_one("#translation-select", Select)
+            cur = int(sel.value) if sel.value != Select.BLANK else 0
+            sel.value = str((cur + 1) % len(self.variants))
+        except Exception:
+            pass
 
     def action_skip_next(self) -> None:
         if self._next_ep_timer is not None:

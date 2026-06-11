@@ -197,7 +197,7 @@ class LibraryScreen(Screen):
         full_result = None
         variants: list = []
         try:
-            results = await self.app.kodik.search(item["title"], limit=25)
+            results, _ = await self.app.kodik.search(item["title"], limit=25)
             groups: dict[tuple, list] = {}
             for r in results:
                 key = (r.title.lower(), r.year)
